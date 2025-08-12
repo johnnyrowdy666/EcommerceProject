@@ -1,0 +1,211 @@
+// BottomTabNavigator.js
+import React from "react";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import Icon from "react-native-vector-icons/Ionicons"; // ต้อง install react-native-vector-icons
+
+// Import screens
+import HomeScreen from "./HomeScreen";
+import CategoriesScreen from "./CategoriesScreen";
+import OrdersScreen from "./OrdersScreen";
+import ProfileScreen from "./ProfileScreen";
+import SearchScreen from "./SearchScreen";
+
+const Tab = createBottomTabNavigator();
+
+// Custom Tab Bar Component
+const CustomTabBar = ({ state, descriptors, navigation }) => {
+  return (
+    <View style={styles.tabBar}>
+      {state.routes.map((route, index) => {
+        const { options } = descriptors[route.key];
+        const label =
+          options.tabBarLabel !== undefined
+            ? options.tabBarLabel
+            : options.title !== undefined
+            ? options.title
+            : route.name;
+
+        const isFocused = state.index === index;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        const onLongPress = () => {
+          navigation.emit({
+            type: "tabLongPress",
+            target: route.key,
+          });
+        };
+
+        // Icon mapping
+        const getIconName = (routeName, focused) => {
+          switch (routeName) {
+            case "Home":
+              return focused ? "home" : "home-outline";
+            case "Categories":
+              return focused ? "grid" : "grid-outline";
+            case "Search":
+              return focused ? "search" : "search-outline";
+            case "Orders":
+              return focused ? "bag" : "bag-outline";
+            case "Profile":
+              return focused ? "person" : "person-outline";
+            default:
+              return "circle";
+          }
+        };
+
+        return (
+          <TouchableOpacity
+            key={index}
+            accessibilityRole="button"
+            accessibilityState={isFocused ? { selected: true } : {}}
+            accessibilityLabel={options.tabBarAccessibilityLabel}
+            testID={options.tabBarTestID}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            style={styles.tabButton}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.tabItem, isFocused && styles.tabItemFocused]}>
+              <Icon
+                name={getIconName(route.name, isFocused)}
+                size={24}
+                color={isFocused ? "#ff6f61" : "#666"}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: isFocused ? "#ff6f61" : "#666" },
+                ]}
+              >
+                {label}
+              </Text>
+              {isFocused && <View style={styles.tabIndicator} />}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
+const BottomTabNavigator = () => {
+  return (
+    <Tab.Navigator
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: "#fff",
+          elevation: 2,
+          shadowOpacity: 0.1,
+        },
+        headerTitleStyle: {
+          fontSize: 20,
+          fontWeight: "600",
+          color: "#333",
+        },
+        headerTintColor: "#ff6f61",
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: "Shop",
+          tabBarLabel: "Home",
+        }}
+      />
+      <Tab.Screen
+        name="Categories"
+        component={CategoriesScreen}
+        options={{
+          title: "Categories",
+          tabBarLabel: "Categories",
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        options={{
+          title: "Search Products",
+          tabBarLabel: "Search",
+        }}
+      />
+      <Tab.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{
+          title: "My Orders",
+          tabBarLabel: "Orders",
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: "Profile",
+          tabBarLabel: "Profile",
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+const styles = StyleSheet.create({
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    paddingBottom: 8,
+    paddingTop: 8,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+  },
+  tabItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 4,
+    position: "relative",
+  },
+  tabItemFocused: {
+    // เพิ่ม animation หรือ effect เมื่อ focus
+  },
+  tabLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  tabIndicator: {
+    position: "absolute",
+    top: -12,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#ff6f61",
+  },
+});
+
+export default BottomTabNavigator;

@@ -35,7 +35,10 @@ db.serialize(() => {
       size TEXT,
       color TEXT,
       stock INTEGER DEFAULT 0,
-      image_uri TEXT
+      image_uri TEXT,
+      user_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
 
@@ -61,6 +64,24 @@ db.serialize(() => {
       FOREIGN KEY (product_id) REFERENCES products(id)
     )
   `);
+
+  // Add user_id column to existing products if it doesn't exist
+  db.run(`
+    ALTER TABLE products ADD COLUMN user_id INTEGER
+  `, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      console.error("Error adding user_id column:", err);
+    }
+  });
+
+  // Add created_at column to existing products if it doesn't exist
+  db.run(`
+    ALTER TABLE products ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      console.error("Error adding created_at column:", err);
+    }
+  });
 
   // เพิ่มข้อมูลหมวดหมู่เริ่มต้นหากไม่มี
   db.get("SELECT COUNT(*) as count FROM categories", (err, row) => {

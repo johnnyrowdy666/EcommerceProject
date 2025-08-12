@@ -15,15 +15,16 @@ import AntDesign from "react-native-vector-icons/AntDesign";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import SimpleLineIcons from "react-native-vector-icons/SimpleLineIcons";
 import { useNavigation } from "@react-navigation/native";
-import { UserContext } from "../component/UserContext";
+import { useUser } from "../component/UserContext";
 
 const LoginScreen = () => {
   const navigation = useNavigation();
-  const { login } = useContext(UserContext);
+  const { login } = useUser();
 
   const [secureEntry, setSecureEntry] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleGoBack = () => {
     navigation.goBack();
@@ -34,18 +35,21 @@ const LoginScreen = () => {
   };
 
   const handleLogin = async () => {
+    if (loading) return;
+
     try {
       if (!username || !password) {
         Alert.alert("Error", "Please enter username and password");
         return;
       }
 
+      setLoading(true);
       const userData = await loginUser(username, password);
 
       console.log("Login User Data:", JSON.stringify(userData, null, 2));
 
-      // เก็บ user ใน Context
-      login(userData.user);
+      // Pass both user data and token to context
+      await login(userData.user, userData.token);
 
       Alert.alert("Login Successful", "You have successfully logged in!", [
         {
@@ -55,6 +59,8 @@ const LoginScreen = () => {
       ]);
     } catch (error) {
       Alert.alert("Login Failed", error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,6 +82,7 @@ const LoginScreen = () => {
             placeholderTextColor={"black"}
             value={username}
             onChangeText={setUsername}
+            editable={!loading}
           />
         </View>
         <View style={styles.inputContainer}>
@@ -87,6 +94,7 @@ const LoginScreen = () => {
             secureTextEntry={secureEntry}
             value={password}
             onChangeText={setPassword}
+            editable={!loading}
           />
           <TouchableOpacity
             onPress={() => {
@@ -100,10 +108,13 @@ const LoginScreen = () => {
           <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.loginButtonWrapper}
+          style={[styles.loginButtonWrapper, loading && styles.loginButtonDisabled]}
           onPress={handleLogin}
+          disabled={loading}
         >
-          <Text style={styles.loginText}>Login</Text>
+          <Text style={styles.loginText}>
+            {loading ? "Logging in..." : "Login"}
+          </Text>
         </TouchableOpacity>
         <Text style={styles.continueText}>or continue with</Text>
         <TouchableOpacity style={styles.googleButtonContainer}>
@@ -174,6 +185,9 @@ const styles = StyleSheet.create({
     backgroundColor: "black",
     borderRadius: 100,
     marginTop: 20,
+  },
+  loginButtonDisabled: {
+    backgroundColor: "#666",
   },
   loginText: {
     color: colors.white,

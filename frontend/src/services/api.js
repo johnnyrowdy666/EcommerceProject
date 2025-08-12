@@ -30,7 +30,15 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      await AsyncStorage.removeItem("token");
+      try {
+        // Preserve imageUri when clearing auth state
+        const userString = await AsyncStorage.getItem("user");
+        const imageUri = userString ? (JSON.parse(userString).imageUri || null) : null;
+        await AsyncStorage.setItem("user", JSON.stringify({ imageUri }));
+        await AsyncStorage.removeItem("token");
+      } catch (err) {
+        console.error("Error clearing auth state:", err);
+      }
     }
     return Promise.reject(error);
   }
@@ -267,12 +275,13 @@ export const updateProduct = async (productId, updateData) => {
 
     if (updateData.imageUri) {
       const uriParts = updateData.imageUri.split(".");
-      const fileType = uriParts[uriParts.length - 1];
-      formData.append("image", {
+      const fileType = uriParts[uriParts.length - 1].toLowerCase();
+      const imageFile = {
         uri: updateData.imageUri,
-        name: `product.${fileType}`,
-        type: `image/${fileType}`,
-      });
+        name: `product_${Date.now()}.${fileType}`,
+        type: `image/${fileType === "jpg" ? "jpeg" : fileType}`,
+      };
+      formData.append("image", imageFile);
     }
 
     const response = await apiClient.put(`/products/${productId}`, formData, {
@@ -316,12 +325,13 @@ export const createCategory = async (name, imageUri = null) => {
 
     if (imageUri) {
       const uriParts = imageUri.split(".");
-      const fileType = uriParts[uriParts.length - 1];
-      formData.append("image", {
+      const fileType = uriParts[uriParts.length - 1].toLowerCase();
+      const imageFile = {
         uri: imageUri,
-        name: `category.${fileType}`,
-        type: `image/${fileType}`,
-      });
+        name: `category_${Date.now()}.${fileType}`,
+        type: `image/${fileType === "jpg" ? "jpeg" : fileType}`,
+      };
+      formData.append("image", imageFile);
     }
 
     const response = await apiClient.post("/categories", formData, {
@@ -442,12 +452,13 @@ export const updateUserProfile = async (userData) => {
 
     if (userData.imageUri) {
       const uriParts = userData.imageUri.split(".");
-      const fileType = uriParts[uriParts.length - 1];
-      formData.append("image", {
+      const fileType = uriParts[uriParts.length - 1].toLowerCase();
+      const imageFile = {
         uri: userData.imageUri,
-        name: `profile.${fileType}`,
-        type: `image/${fileType}`,
-      });
+        name: `profile_${Date.now()}.${fileType}`,
+        type: `image/${fileType === "jpg" ? "jpeg" : fileType}`,
+      };
+      formData.append("image", imageFile);
     }
 
     const response = await apiClient.put("/users/me", formData, {
@@ -459,7 +470,7 @@ export const updateUserProfile = async (userData) => {
       "user",
       JSON.stringify({
         ...response.data,
-        imageUri: response.data.image, // ให้ backend ส่ง URL รูป
+        imageUri: response.data.image_uri, // ให้ backend ส่ง URL รูป
       })
     );
 
@@ -527,7 +538,7 @@ export const checkNetworkConnectivity = async () => {
   }
 };
 
-export const getApiBaseUrl = () => API_URL;
+export const getApiBaseUrl = () => apiClient.defaults.baseURL;
 
 export const setApiBaseUrl = (newUrl) => {
   apiClient.defaults.baseURL = newUrl;

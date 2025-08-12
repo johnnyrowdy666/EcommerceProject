@@ -1,9 +1,15 @@
 // components/ProductCard.js
 import React from "react";
-import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, Image, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
+import { getApiBaseUrl } from "../services/api";
+import { useCart } from "../component/CartContext";
+import { useUser } from "../component/UserContext";
 
-const ProductCard = ({ product, style, onPress }) => {
+const ProductCard = ({ product, style, onPress, showAddToCart = true }) => {
+  const { addToCart, isInCart, getCartItemQuantity } = useCart();
+  const { isAuthenticated } = useUser();
+
   // Format price with commas
   const formatPrice = (price) => {
     return parseFloat(price).toLocaleString("th-TH", {
@@ -18,12 +24,38 @@ const ProductCard = ({ product, style, onPress }) => {
 
     // If it's a local file path (starts with /uploads/), prepend the API base URL
     if (imageUri.startsWith("/uploads/")) {
-      return { uri: `http://192.168.0.102:5000${imageUri}` };
+      const baseUrl = getApiBaseUrl().replace("/api", ""); // Remove /api from base URL
+      return { uri: `${baseUrl}${imageUri}` };
     }
 
     // If it's already a full URI
     return { uri: imageUri };
   };
+
+  const handleAddToCart = () => {
+    if (!isAuthenticated) {
+      Alert.alert(
+        "กรุณาเข้าสู่ระบบ",
+        "คุณต้องเข้าสู่ระบบก่อนเพิ่มสินค้าลงตะกร้า",
+        [
+          { text: "ยกเลิก", style: "cancel" },
+          { text: "เข้าสู่ระบบ", onPress: () => navigation.navigate("Login") },
+        ]
+      );
+      return;
+    }
+
+    if (product.stock <= 0) {
+      Alert.alert("สินค้าหมด", "สินค้านี้หมดแล้ว");
+      return;
+    }
+
+    addToCart(product);
+    Alert.alert("เพิ่มลงตะกร้าแล้ว", `${product.title} ถูกเพิ่มลงตะกร้าแล้ว`);
+  };
+
+  const cartQuantity = getCartItemQuantity(product.id);
+  const isProductInCart = isInCart(product.id);
 
   return (
     <TouchableOpacity
@@ -42,6 +74,11 @@ const ProductCard = ({ product, style, onPress }) => {
             <Text style={styles.outOfStockText}>หมด</Text>
           </View>
         )}
+        {isProductInCart && (
+          <View style={styles.inCartBadge}>
+            <Text style={styles.inCartText}>{cartQuantity}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.contentContainer}>
@@ -49,40 +86,72 @@ const ProductCard = ({ product, style, onPress }) => {
           {product.title}
         </Text>
 
-        <View style={styles.priceContainer}>
-          <Text style={styles.price}>฿{formatPrice(product.price)}</Text>
-          {product.stock > 0 && (
-            <Text style={styles.stock}>เหลือ {product.stock}</Text>
-          )}
-        </View>
+        {/* Seller Information */}
+        {product.seller_username && (
+          <View style={styles.sellerContainer}>
+            <Icon name="person-circle-outline" size={16} color="#666" />
+            <Text style={styles.sellerText} numberOfLines={1}>
+              Seller: {product.seller_username}
+            </Text>
+          </View>
+        )}
 
-        <View style={styles.metaContainer}>
-          <View style={styles.categoryContainer}>
-            <Icon name="pricetag-outline" size={12} color="#666" />
+        <View style={styles.detailsContainer}>
+          {product.category && (
             <Text style={styles.category} numberOfLines={1}>
               {product.category}
             </Text>
-          </View>
-
-          {product.seller_name && (
-            <View style={styles.sellerContainer}>
-              <Icon name="person-outline" size={12} color="#666" />
-              <Text style={styles.seller} numberOfLines={1}>
-                {product.seller_name}
-              </Text>
-            </View>
           )}
-        </View>
-
-        {(product.size || product.color) && (
+          
           <View style={styles.attributesContainer}>
             {product.size && (
-              <Text style={styles.attribute}>{product.size}</Text>
+              <Text style={styles.attribute}>Size: {product.size}</Text>
             )}
             {product.color && (
-              <Text style={styles.attribute}>{product.color}</Text>
+              <Text style={styles.attribute}>Color: {product.color}</Text>
             )}
           </View>
+        </View>
+
+        <View style={styles.footerContainer}>
+          <Text style={styles.price}>฿{formatPrice(product.price)}</Text>
+          <View style={styles.stockContainer}>
+            <Icon
+              name={product.stock > 0 ? "checkmark-circle" : "close-circle"}
+              size={16}
+              color={product.stock > 0 ? "#4CAF50" : "#f44336"}
+            />
+            <Text
+              style={[
+                styles.stockText,
+                {
+                  color: product.stock > 0 ? "#4CAF50" : "#f44336",
+                },
+              ]}
+            >
+              {product.stock > 0 ? `Stock: ${product.stock}` : "Out of stock"}
+            </Text>
+          </View>
+        </View>
+
+        {showAddToCart && product.stock > 0 && (
+          <TouchableOpacity
+            style={[
+              styles.addToCartButton,
+              isProductInCart && styles.inCartButton
+            ]}
+            onPress={handleAddToCart}
+            disabled={isProductInCart}
+          >
+            <Icon
+              name={isProductInCart ? "checkmark" : "add"}
+              size={16}
+              color="white"
+            />
+            <Text style={styles.addToCartText}>
+              {isProductInCart ? "ในตะกร้าแล้ว" : "เพิ่มลงตะกร้า"}
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
     </TouchableOpacity>
@@ -93,36 +162,52 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "white",
     borderRadius: 12,
-    overflow: "hidden",
-    elevation: 2,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 1,
+      height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 3.84,
+    elevation: 5,
+    overflow: "hidden",
   },
   imageContainer: {
     position: "relative",
   },
   image: {
     width: "100%",
-    height: 160,
+    height: 150,
+    backgroundColor: "#f5f5f5",
   },
   outOfStockOverlay: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
+    top: 8,
+    right: 8,
+    backgroundColor: "#f44336",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   outOfStockText: {
     color: "white",
-    fontSize: 16,
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  inCartBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "#4CAF50",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  inCartText: {
+    color: "white",
+    fontSize: 12,
     fontWeight: "bold",
   },
   contentContainer: {
@@ -135,63 +220,74 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 20,
   },
-  priceContainer: {
+  detailsContainer: {
+    marginBottom: 12,
+  },
+  category: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 4,
+  },
+  attributesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  attribute: {
+    fontSize: 12,
+    color: "#888",
+    backgroundColor: "#f5f5f5",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  footerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   price: {
     fontSize: 18,
     fontWeight: "700",
     color: "#ff6f61",
   },
-  stock: {
-    fontSize: 12,
-    color: "#666",
-    backgroundColor: "#f0f0f0",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  metaContainer: {
-    marginBottom: 6,
-  },
-  categoryContainer: {
+  stockContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    gap: 4,
   },
-  category: {
+  stockText: {
     fontSize: 12,
-    color: "#666",
-    marginLeft: 4,
-    flex: 1,
+    fontWeight: "500",
+  },
+  addToCartButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ff6f61",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 6,
+  },
+  inCartButton: {
+    backgroundColor: "#4CAF50",
+  },
+  addToCartText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
   },
   sellerContainer: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 8,
+    gap: 4,
   },
-  seller: {
+  sellerText: {
     fontSize: 12,
     color: "#666",
-    marginLeft: 4,
-    flex: 1,
-  },
-  attributesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 4,
-  },
-  attribute: {
-    fontSize: 11,
-    color: "#999",
-    backgroundColor: "#f5f5f5",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    marginRight: 4,
-    marginBottom: 2,
   },
 });
 

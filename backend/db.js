@@ -21,10 +21,12 @@ db.serialize(() => {
       email TEXT NOT NULL,
       phone TEXT,
       role TEXT DEFAULT 'user',
-      image_uri TEXT
+      image_uri TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
+  // ✅ แก้ไข products table ให้มี user_id และ created_at ตั้งแต่ต้น
   db.run(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +37,10 @@ db.serialize(() => {
       size TEXT,
       color TEXT,
       stock INTEGER DEFAULT 0,
-      image_uri TEXT
+      image_uri TEXT,
+      user_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
 
@@ -47,20 +52,100 @@ db.serialize(() => {
     )
   `);
 
+  // Create orders table
   db.run(`
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
       quantity INTEGER NOT NULL,
-      shipping_address TEXT,
-      payment_method TEXT,
+      total_price REAL NOT NULL,
       status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id),
+      FOREIGN KEY (product_id) REFERENCES products (id)
     )
-  `);
+  `, (err) => {
+    if (err) {
+      console.error("Error creating orders table:", err);
+    } else {
+      console.log("Orders table ready");
+    }
+  });
+
+  // Create payments table (for future payment tracking)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT DEFAULT 'THB',
+      status TEXT DEFAULT 'pending',
+      payment_method TEXT DEFAULT 'cash',
+      transaction_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id) REFERENCES orders (id)
+    )
+  `, (err) => {
+    if (err) {
+      console.error("Error creating payments table:", err);
+    } else {
+      console.log("Payments table ready");
+    }
+  });
+
+  // ✅ เพิ่ม columns สำหรับตารางเก่าที่อาจไม่มี (กรณีที่ database มีอยู่แล้ว)
+  
+  // Add user_id column to existing products if it doesn't exist
+  db.run(`
+    ALTER TABLE products ADD COLUMN user_id INTEGER
+  `, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      console.error("Error adding user_id column to products:", err);
+    } else {
+      console.log("✅ user_id column ready in products table");
+    }
+  });
+
+  // Add created_at column to existing products if it doesn't exist
+  db.run(`
+    ALTER TABLE products ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      console.error("Error adding created_at column to products:", err);
+    } else {
+      console.log("✅ created_at column ready in products table");
+    }
+  });
+
+  // Add created_at column to existing users if it doesn't exist
+  db.run(`
+    ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      console.error("Error adding created_at column to users:", err);
+    } else {
+      console.log("✅ created_at column ready in users table");
+    }
+  });
+
+  // ✅ อัพเดตข้อมูลเก่าที่ไม่มี created_at
+  db.run(`
+    UPDATE products SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL
+  `, (err) => {
+    if (err) {
+      console.error("Error updating products created_at:", err);
+    }
+  });
+
+  db.run(`
+    UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL
+  `, (err) => {
+    if (err) {
+      console.error("Error updating users created_at:", err);
+    }
+  });
 
   // เพิ่มข้อมูลหมวดหมู่เริ่มต้นหากไม่มี
   db.get("SELECT COUNT(*) as count FROM categories", (err, row) => {

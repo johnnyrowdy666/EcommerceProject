@@ -54,9 +54,17 @@ const HomeScreen = () => {
 
       // Handle products data
       if (productsData.status === "fulfilled") {
-        console.log(`Loaded ${productsData.value.length} products`);
-        setProducts(productsData.value);
-        setFeaturedProducts(productsData.value.slice(0, 6));
+        // Filter out products with zero or negative stock
+        const availableProducts = productsData.value.filter(product => 
+          product.stock > 0
+        );
+        
+        console.log(`Loaded ${productsData.value.length} total products, ${availableProducts.length} available`);
+        setProducts(availableProducts);
+        
+        // Set featured products from available products only
+        const featured = availableProducts.slice(0, 6);
+        setFeaturedProducts(featured);
       } else {
         console.error("Failed to load products:", productsData.reason);
         throw new Error("Failed to load products");

@@ -1,77 +1,209 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Image, ScrollView } from "react-native";
-import { getMyOrders } from "../services/api";
+import { getOrders } from "../services/api";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
+import { useUser } from "../component/UserContext";
 
-const OrderScreen = ({ route }) => {
-  const { orderId } = route.params;
-  const [order, setOrder] = useState(null);
+const OrderScreen = ({ navigation }) => {
+  const { isAuthenticated } = useUser();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        const orders = await getMyOrders();
-        const foundOrder = orders.find((o) => o.id.toString() === orderId);
-        setOrder(foundOrder);
-      } catch (error) {
-        console.error("Error fetching order:", error);
+    if (isAuthenticated) {
+      fetchOrders();
+    }
+  }, [isAuthenticated]);
+
+  const fetchOrders = async (showRefreshing = false) => {
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    };
-    fetchOrder();
-  }, [orderId]);
 
-  if (!order) return <Text>Loading order details...</Text>;
+      const data = await getOrders();
+      setOrders(data || []);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      Alert.alert("Error", "Failed to load orders");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.orderId}>Order #{order.id}</Text>
-        <Text style={styles.status}>{order.status}</Text>
-      </View>
+  const onRefresh = () => {
+    fetchOrders(true);
+  };
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Product</Text>
-        <View style={styles.productInfo}>
-          <Image
-            source={{ uri: order.product_image }}
-            style={styles.productImage}
-          />
-          <View style={styles.productDetails}>
-            <Text style={styles.productTitle}>{order.product_title}</Text>
-            <Text>Quantity: {order.quantity}</Text>
-            <Text style={styles.price}>${order.total_price.toFixed(2)}</Text>
-          </View>
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "pending":
+        return "#ff9800";
+      case "processing":
+        return "#2196f3";
+      case "shipped":
+        return "#9c27b0";
+      case "delivered":
+        return "#4caf50";
+      case "cancelled":
+        return "#f44336";
+      default:
+        return "#666";
+    }
+  };
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case "pending":
+        return "รอการยืนยัน";
+      case "processing":
+        return "กำลังดำเนินการ";
+      case "shipped":
+        return "จัดส่งแล้ว";
+      case "delivered":
+        return "จัดส่งสำเร็จ";
+      case "cancelled":
+        return "ยกเลิก";
+      default:
+        return status;
+    }
+  };
+
+  const renderOrderItem = ({ item }) => (
+    <View style={styles.orderItem}>
+      <View style={styles.orderHeader}>
+        <Text style={styles.orderId}>คำสั่งซื้อ #{item.id}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Order Summary</Text>
-        <View style={styles.summaryRow}>
-          <Text>Subtotal</Text>
-          <Text>${order.total_price.toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <Text>Shipping</Text>
-          <Text>$5.00</Text>
-        </View>
-        <View style={[styles.summaryRow, styles.totalRow]}>
-          <Text style={styles.totalText}>Total</Text>
-          <Text style={styles.totalText}>
-            ${(order.total_price + 5).toFixed(2)}
+      <View style={styles.productInfo}>
+        <Text style={styles.productTitle} numberOfLines={2}>
+          {item.product_title}
+        </Text>
+        <Text style={styles.productPrice}>
+          ฿{parseFloat(item.product_price).toLocaleString()}
+        </Text>
+      </View>
+
+      {/* Seller Information */}
+      {item.seller_username && (
+        <View style={styles.sellerInfo}>
+          <Icon name="person-circle-outline" size={16} color="#666" />
+          <Text style={styles.sellerText}>
+            Seller: {item.seller_username}
           </Text>
         </View>
+      )}
+
+      <View style={styles.orderDetails}>
+        <Text style={styles.quantity}>จำนวน: {item.quantity} ชิ้น</Text>
+        <Text style={styles.totalPrice}>
+          ยอดรวม: ฿{parseFloat(item.total_price).toLocaleString()}
+        </Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Shipping Information</Text>
-        <Text>Standard Shipping (3-5 business days)</Text>
+      <Text style={styles.orderDate}>
+        {new Date(item.created_at).toLocaleDateString("th-TH")}
+      </Text>
+    </View>
+  );
+
+  const renderEmptyOrders = () => (
+    <View style={styles.emptyContainer}>
+      <Icon name="receipt-outline" size={80} color="#ccc" />
+      <Text style={styles.emptyTitle}>ไม่มีคำสั่งซื้อ</Text>
+      <Text style={styles.emptyText}>
+        คุณยังไม่มีคำสั่งซื้อใดๆ
+      </Text>
+      <TouchableOpacity
+        style={styles.shopButton}
+        onPress={() => navigation.navigate("Home")}
+      >
+        <Text style={styles.shopButtonText}>เลือกซื้อสินค้า</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>คำสั่งซื้อของฉัน</Text>
+        </View>
+        <View style={styles.guestContainer}>
+          <Text style={styles.guestTitle}>กรุณาเข้าสู่ระบบ</Text>
+          <Text style={styles.guestText}>เพื่อดูคำสั่งซื้อของคุณ</Text>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => navigation.navigate("Login")}
+          >
+            <Text style={styles.loginButtonText}>เข้าสู่ระบบ</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>คำสั่งซื้อของฉัน</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#ff6f61" />
+          <Text style={styles.loadingText}>กำลังโหลดคำสั่งซื้อ...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>คำสั่งซื้อของฉัน</Text>
+        {orders.length > 0 && (
+          <Text style={styles.orderCount}>
+            {orders.length} คำสั่งซื้อ
+          </Text>
+        )}
       </View>
 
-      <View style={styles.trackButton}>
-        <Icon name="location-outline" size={20} color="#ff6f61" />
-        <Text style={styles.trackText}>Track Order</Text>
-      </View>
-    </ScrollView>
+      {orders.length === 0 ? (
+        renderEmptyOrders()
+      ) : (
+        <FlatList
+          data={orders}
+          renderItem={renderOrderItem}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.orderList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#ff6f61"]}
+              tintColor="#ff6f61"
+            />
+          }
+        />
+      )}
+    </View>
   );
 };
 
@@ -79,79 +211,172 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
-    padding: 15,
   },
   header: {
+    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#333",
+  },
+  orderCount: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 4,
+  },
+  orderList: {
+    padding: 16,
+  },
+  orderItem: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  orderHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 20,
+    alignItems: "center",
+    marginBottom: 12,
   },
   orderId: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  status: {
-    color: "#ff6f61",
-    fontWeight: "bold",
-  },
-  section: {
-    backgroundColor: "white",
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 15,
-  },
-  sectionTitle: {
     fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 10,
+    fontWeight: "600",
+    color: "#333",
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  statusText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
   },
   productInfo: {
-    flexDirection: "row",
-  },
-  productImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 4,
-    marginRight: 15,
-  },
-  productDetails: {
-    flex: 1,
+    marginBottom: 12,
   },
   productTitle: {
-    fontWeight: "bold",
-    marginBottom: 5,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4,
   },
-  price: {
+  productPrice: {
+    fontSize: 16,
+    fontWeight: "700",
     color: "#ff6f61",
-    fontWeight: "bold",
-    marginTop: 5,
   },
-  summaryRow: {
+  orderDetails: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#ddd",
-    paddingTop: 10,
-    marginTop: 5,
+  quantity: {
+    fontSize: 14,
+    color: "#666",
   },
-  totalText: {
-    fontWeight: "bold",
+  totalPrice: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
   },
-  trackButton: {
-    flexDirection: "row",
+  orderDate: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "right",
+  },
+  emptyContainer: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "white",
-    padding: 15,
-    borderRadius: 8,
+    paddingHorizontal: 40,
   },
-  trackText: {
-    color: "#ff6f61",
-    fontWeight: "bold",
-    marginLeft: 10,
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: "#333",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  shopButton: {
+    backgroundColor: "#ff6f61",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 25,
+  },
+  shopButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  guestTitle: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  guestText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  loginButton: {
+    backgroundColor: "#ff6f61",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 25,
+  },
+  loginButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#666",
+  },
+  sellerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  sellerText: {
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 8,
   },
 });
 

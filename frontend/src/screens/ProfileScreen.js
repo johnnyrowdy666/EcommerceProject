@@ -7,26 +7,34 @@ import {
   View,
   Alert,
 } from "react-native";
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "../component/Header";
 import { fontSize, iconSize, spacing } from "../constants/dimensions";
 import { fontFamily } from "../constants/fontFamily";
 import CustomInput from "../component/CustomInput";
 import Feather from "react-native-vector-icons/Feather";
 import * as ImagePicker from "expo-image-picker";
-import { updateUserImage } from "../services/api";
-import { UserContext } from "../component/UserContext";
+import { updateUserImage, getApiBaseUrl } from "../services/api";
+import { useUser } from "../component/UserContext";
 import { useNavigation } from "@react-navigation/native";
 
 const ProfileScreen = () => {
-  const { user, logout } = useContext(UserContext);
-  const [imageUri, setImageUri] = useState(user?.image_uri || null);
+  const { user, logout, isAuthenticated, role } = useUser();
+  const [imageUri, setImageUri] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
-    if (user?.image_uri) {
-      setImageUri(user.image_uri);
+    // Set initial image URI from user data
+    if (user?.image_uri || user?.imageUri) {
+      const uri = user.image_uri || user.imageUri;
+      // If it's a relative path, make it absolute
+      if (uri && uri.startsWith('/uploads/')) {
+        const baseUrl = getApiBaseUrl().replace('/api', '');
+        setImageUri(`${baseUrl}${uri}`);
+      } else if (uri) {
+        setImageUri(uri);
+      }
     }
 
     const requestPermissions = async () => {
@@ -61,6 +69,7 @@ const ProfileScreen = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.5,
+        aspect: [1, 1], // Square aspect ratio for profile images
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -69,22 +78,86 @@ const ProfileScreen = () => {
           throw new Error("Failed to get image URI");
         }
 
+        // Show the selected image immediately for better UX
         setImageUri(selectedImageUri);
 
         const response = await updateUserImage(user.username, selectedImageUri);
-        if (response && response.message) {
-          Alert.alert("Success", response.message);
+        if (response && response.image_uri) {
+          // Update the image URI with the server response
+          const baseUrl = getApiBaseUrl().replace('/api', '');
+          const serverUri = response.image_uri.startsWith('/uploads/') 
+            ? `${baseUrl}${response.image_uri}`
+            : response.image_uri;
+          setImageUri(serverUri);
+          
+          // Update user context with new image
+          // You might want to call updateUser here if you have that function
+          
+          Alert.alert("Success", "Profile image updated successfully!");
         } else {
           Alert.alert("Success", "Image updated successfully!");
         }
       }
     } catch (error) {
-      Alert.alert("Upload failed", error.message);
-      setImageUri(user?.image_uri || null);
+      console.error("Image upload error:", error);
+      Alert.alert("Upload failed", error.message || "Failed to upload image");
+      // Revert to original image on error
+      if (user?.image_uri || user?.imageUri) {
+        const uri = user.image_uri || user.imageUri;
+        if (uri && uri.startsWith('/uploads/')) {
+          const baseUrl = getApiBaseUrl().replace('/api', '');
+          setImageUri(`${baseUrl}${uri}`);
+        } else if (uri) {
+          setImageUri(uri);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            await logout();
+            // Don't navigate manually - let the RootNavigator handle it
+          },
+        },
+      ]
+    );
+  };
+
+  // If not authenticated, show login prompt
+  if (!isAuthenticated) {
+    return (
+      <ScrollView style={styles.container}>
+        <Header />
+        <View style={styles.guestContainer}>
+          <Text style={styles.guestTitle}>Not Logged In</Text>
+          <Text style={styles.guestText}>Please log in to view your profile</Text>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => {
+              // Navigate to Login screen
+              navigation.navigate("Login");
+            }}
+          >
+            <Text style={styles.loginButtonText}>Login</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
@@ -116,7 +189,19 @@ const ProfileScreen = () => {
         <Text style={[styles.name, { color: "#000000" }]}>
           Hello!!! {user?.username || "Guest"}
         </Text>
-        <Text style={[styles.role, { color: "#666666" }]}>Test user</Text>
+        <View style={styles.roleContainer}>
+          <Text style={[styles.role, { color: "#666666" }]}>
+            Role: {role || "user"}
+          </Text>
+          {role === "admin" && (
+            <TouchableOpacity
+              style={styles.adminButton}
+              onPress={() => navigation.navigate("AdminDashboard")}
+            >
+              <Text style={styles.adminButtonText}>Admin Dashboard</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <View style={styles.inputFieldsContainer}>
@@ -148,10 +233,7 @@ const ProfileScreen = () => {
 
       <TouchableOpacity
         style={[styles.logoutButton, { borderColor: "#FF7F50" }]}
-        onPress={() => {
-          logout();
-          navigation.navigate("Onboard");
-        }}
+        onPress={handleLogout}
       >
         <Text style={[styles.logoutText, { color: "#FF7F50" }]}>Logout</Text>
       </TouchableOpacity>
@@ -165,6 +247,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: spacing.md,
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  guestTitle: {
+    fontSize: fontSize.xl,
+    fontFamily: fontFamily.bold,
+    color: "#333",
+    marginBottom: 10,
+  },
+  guestText: {
+    fontSize: fontSize.md,
+    color: "#666",
+    marginBottom: 30,
+  },
+  loginButton: {
+    backgroundColor: "#FF7F50",
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  loginButtonText: {
+    color: "white",
+    fontSize: fontSize.md,
+    fontFamily: fontFamily.bold,
   },
   profileImageContainer: {
     justifyContent: "center",
@@ -193,9 +303,25 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.lg,
   },
+  roleContainer: {
+    alignItems: "center",
+    marginTop: 5,
+  },
   role: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.md,
+  },
+  adminButton: {
+    backgroundColor: "#FF7F50",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  adminButtonText: {
+    color: "white",
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.bold,
   },
   inputFieldsContainer: {
     marginVertical: spacing.md,

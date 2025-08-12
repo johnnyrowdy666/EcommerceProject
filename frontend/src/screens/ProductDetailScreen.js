@@ -8,13 +8,19 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { getProductById, createOrder } from "../services/api";
+import { getProductById, getApiBaseUrl } from "../services/api";
+import { useCart } from "../component/CartContext";
+import { useUser } from "../component/UserContext";
 import Icon from "react-native-vector-icons/Ionicons";
 
 const ProductDetailScreen = ({ route, navigation }) => {
   const { productId } = route.params;
   const [product, setProduct] = useState(null);
   const [quantity, setQuantity] = useState(1);
+  const [loading, setLoading] = useState(false);
+  
+  const { addToCart, isInCart, getCartItemQuantity } = useCart();
+  const { isAuthenticated } = useUser();
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -28,61 +34,121 @@ const ProductDetailScreen = ({ route, navigation }) => {
     fetchProduct();
   }, [productId]);
 
-  const handleAddToCart = async () => {
-    try {
-      await createOrder(productId, quantity);
-      Alert.alert("Success", "Product added to cart");
-      navigation.navigate("Cart");
-    } catch (error) {
-      Alert.alert("Error", error.message);
+  const handleAddToCart = () => {
+    if (!isAuthenticated) {
+      Alert.alert(
+        "กรุณาเข้าสู่ระบบ",
+        "คุณต้องเข้าสู่ระบบก่อนเพิ่มสินค้าลงตะกร้า",
+        [
+          { text: "ยกเลิก", style: "cancel" },
+          { text: "เข้าสู่ระบบ", onPress: () => navigation.navigate("Login") },
+        ]
+      );
+      return;
     }
+
+    if (product.stock <= 0) {
+      Alert.alert("สินค้าหมด", "สินค้านี้หมดแล้ว");
+      return;
+    }
+
+    if (product.stock < quantity) {
+      Alert.alert("สินค้าไม่เพียงพอ", `เหลือเพียง ${product.stock} ชิ้น`);
+      return;
+    }
+
+    addToCart(product, quantity);
+    Alert.alert("เพิ่มลงตะกร้าแล้ว", `${product.title} ถูกเพิ่มลงตะกร้าแล้ว`);
+  };
+
+  const getImageSource = (imageUri) => {
+    if (!imageUri) return require("../assets/Logo.jpg");
+
+    if (imageUri.startsWith("/uploads/")) {
+      const baseUrl = getApiBaseUrl().replace("/api", "");
+      return { uri: `${baseUrl}${imageUri}` };
+    }
+
+    return { uri: imageUri };
   };
 
   if (!product) return <Text>Loading...</Text>;
 
+  const cartQuantity = getCartItemQuantity(product.id);
+  const isProductInCart = isInCart(product.id);
+
   return (
     <ScrollView style={styles.container}>
-      <Image source={{ uri: product.image_uri }} style={styles.productImage} />
+      <Image source={getImageSource(product.image_uri)} style={styles.productImage} />
 
       <View style={styles.detailsContainer}>
         <Text style={styles.title}>{product.title}</Text>
-        <Text style={styles.price}>${product.price.toFixed(2)}</Text>
+        <Text style={styles.price}>฿{parseFloat(product.price).toLocaleString()}</Text>
 
-        <View style={styles.sellerInfo}>
-          <Image
-            source={{
-              uri: product.seller_image || "https://via.placeholder.com/50",
-            }}
-            style={styles.sellerImage}
-          />
-          <Text style={styles.sellerName}>Sold by: {product.seller_name}</Text>
-        </View>
+        {/* Seller Information */}
+        {product.seller_username && (
+          <View style={styles.sellerInfo}>
+            <Icon name="person-circle-outline" size={20} color="#666" />
+            <Text style={styles.sellerName}>
+              Seller: {product.seller_username}
+            </Text>
+          </View>
+        )}
 
         <Text style={styles.description}>{product.description}</Text>
 
         <View style={styles.metaContainer}>
-          <Text>Category: {product.category}</Text>
-          <Text>Size: {product.size}</Text>
-          <Text>Color: {product.color}</Text>
+          <Text style={styles.metaText}>Category: {product.category}</Text>
+          {product.size && <Text style={styles.metaText}>Size: {product.size}</Text>}
+          {product.color && <Text style={styles.metaText}>Color: {product.color}</Text>}
+          <Text style={styles.metaText}>Stock: {product.stock} ชิ้น</Text>
         </View>
 
         <View style={styles.quantityContainer}>
           <TouchableOpacity
             onPress={() => setQuantity(Math.max(1, quantity - 1))}
+            disabled={quantity <= 1}
           >
-            <Icon name="remove-circle-outline" size={30} />
+            <Icon 
+              name="remove-circle-outline" 
+              size={30} 
+              color={quantity <= 1 ? "#ccc" : "#ff6f61"} 
+            />
           </TouchableOpacity>
           <Text style={styles.quantityText}>{quantity}</Text>
-          <TouchableOpacity onPress={() => setQuantity(quantity + 1)}>
-            <Icon name="add-circle-outline" size={30} />
+          <TouchableOpacity 
+            onPress={() => setQuantity(quantity + 1)}
+            disabled={quantity >= product.stock}
+          >
+            <Icon 
+              name="add-circle-outline" 
+              size={30} 
+              color={quantity >= product.stock ? "#ccc" : "#ff6f61"} 
+            />
           </TouchableOpacity>
         </View>
 
+        {isProductInCart && (
+          <View style={styles.inCartInfo}>
+            <Icon name="checkmark-circle" size={20} color="#4CAF50" />
+            <Text style={styles.inCartText}>
+              ในตะกร้าแล้ว ({cartQuantity} ชิ้น)
+            </Text>
+          </View>
+        )}
+
         <TouchableOpacity
-          style={styles.addToCartButton}
+          style={[
+            styles.addToCartButton,
+            (isProductInCart || product.stock <= 0) && styles.disabledButton
+          ]}
           onPress={handleAddToCart}
+          disabled={isProductInCart || product.stock <= 0}
         >
-          <Text style={styles.addToCartText}>Add to Cart</Text>
+          <Text style={styles.addToCartText}>
+            {isProductInCart ? "ในตะกร้าแล้ว" : 
+             product.stock <= 0 ? "สินค้าหมด" : "เพิ่มลงตะกร้า"}
+          </Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -134,6 +200,10 @@ const styles = StyleSheet.create({
   metaContainer: {
     marginBottom: 20,
   },
+  metaText: {
+    fontSize: 16,
+    marginBottom: 5,
+  },
   quantityContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -154,6 +224,21 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  inCartInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 15,
+    marginBottom: 15,
+  },
+  inCartText: {
+    marginLeft: 5,
+    fontSize: 16,
+    color: "#4CAF50",
+  },
+  disabledButton: {
+    backgroundColor: "#ccc",
+    opacity: 0.7,
   },
 });
 

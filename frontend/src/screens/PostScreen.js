@@ -14,8 +14,13 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { uploadProduct, getCategories } from "../services/api";
+import { useUser } from "../component/UserContext";
+import { useNavigation } from "@react-navigation/native";
 
 export default function PostScreen({ navigation }) {
+  const { isAuthenticated, user } = useUser();
+  const nav = useNavigation();
+
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [desc, setDesc] = useState("");
@@ -28,6 +33,28 @@ export default function PostScreen({ navigation }) {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      Alert.alert(
+        "Authentication Required",
+        "You need to be logged in to post products",
+        [
+          {
+            text: "Login",
+            onPress: () => nav.navigate("Login"),
+          },
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => nav.goBack(),
+          },
+        ]
+      );
+      return;
+    }
+  }, [isAuthenticated, nav]);
 
   useEffect(() => {
     (async () => {
@@ -43,6 +70,16 @@ export default function PostScreen({ navigation }) {
 
     loadCategories();
   }, []);
+
+  // Don't render anything if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.authContainer}>
+        <ActivityIndicator size="large" color="#ff6f61" />
+        <Text style={styles.authText}>Checking authentication...</Text>
+      </View>
+    );
+  }
 
   const loadCategories = async () => {
     setCategoriesLoading(true);
@@ -517,5 +554,16 @@ const styles = StyleSheet.create({
     height: 100,
     justifyContent: "center",
     alignItems: "center",
+  },
+  authContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  authText: {
+    marginTop: 10,
+    color: "#666",
+    fontSize: 16,
   },
 });
